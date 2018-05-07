@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Reconocimiento</title>
+      <!--Reconocimiento -->
+      <script type="text/javascript" src="./lib_Aff/jquery-3.1.0.js"></script>
+      <script type="text/javascript" src="./lib_Aff/bootstrap.min.js"></script>	
+      <script type="text/javascript" src="js/3.2/affdex.js"></script>
+
+      <link href="css/estilos.css" type="text/css" rel="stylesheet"></link>
+      <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css">
+      <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+     <!-- _____________________________________________ -->
+</head>
+<body>
+    
+        <div class="container-fluid">
+          <div class="row">
+            <div class="col-md-8" id="affdex_elements" style="width:680px;height:480px;"></div>
+            <div class="col-md-4">
+              <div style="height:25em;">
+                <strong>DATOS EN TIEMPO REAL</strong>
+                    <div id="results" style="word-wrap:break-word;"></div>
+              </div>
+
+              <div>
+                <strong>DETECCIÓN DE ACCIONES</strong>
+              </div>
+              <div id="logs"></div>
+            </div>
+          </div>
+          <div>
+            <button id="start" onclick="onStart()">Start</button>
+            <button id="stop" onclick="onStop()">Stop</button>
+            <button id="reset" onclick="onReset()">Reset</button>            
+          </div>
+        </div>        
+</body>
+      <script>
+      
+      var divRoot = $("#affdex_elements")[0]; //DEBEMOS CREAR UN DIV Y ASIGNARLE UN ID
+      var width = 640; //MARCO QUE SE CAPTURA
+      var height = 480;//MARCO QUE SE CAPTURA
+      //CONFIGURACION DEL DETECTOR DE ROSTROS
+      //LARGE_FACE PARA ROSTROS QUE OCUPAN GRAN PARTE DEL MARCO
+      var faceMode = affdex.FaceDetectorMode.LARGE_FACES;
+      //VARIABLES GLOBALES
+      var vectorSuma=[];
+      var i=0;
+      var m=0;
+      //DATOS A ENVIAR A LA BASE DE DATOS
+      var neutralCont = 0;//ALMACENA EL VALOR FINAL DE PUNTOS EN EL ESTADO NEUTRAL
+      var entretenidoCont=0;//ALMACENA EL VALOR FINAL DE PUNTOS EN EL ESTADO ENTRETENIDO
+      var aburridoCont=0;//ALMACENA EL VALOR FINAL DE PUNTOS EN EL ESTADO ABURRIDO
+      var neutralInt=0;//ALMACENA LA INTENSIDAD DEL ESTADO NEUTRAL
+      var entretenidoInt=0;//ALMACENA LA INTENSIDAD DEL ESTADO ENTRETENIDO
+      var aburridoInt=0;//ALMACENA LA INTENSIDAD DEL ESTADO ABURRIDO
+        
+      //CONSTRUCCION DE UN DETECTOR DE CAMARA Y ESPECIFICACION DEL MARCO Y FACEMODE      
+      var detector = new affdex.CameraDetector(divRoot, width, height, faceMode);
+
+      //HABILITAMOS LA DETECCIÓN DE EXPRESIONES, EMOCIONES Y EMOJIS      
+      detector.detectAllEmotions();
+      detector.detectAllExpressions();
+      detector.detectAllEmojis();
+      detector.detectAllAppearance();
+
+      //AGREGAMOS UNA NOTIFICACION DE EN QUÉ MOMENTO SE HA INICIALIZADO EL DETECTOR Y       
+      detector.addEventListener("onInitializeSuccess", function() {
+        log('#logs', "El dectector ha sido inicializado");
+        //PODEMOS CON ESTAS 2 LINEAS MOSTRAR LOS PUNTOS DETECTADOS EN EL ROSTRO
+        $("#face_video_canvas").css("display", "block");
+        $("#face_video").css("display", "none");
+      });
+
+      //FUNCION PARA MOSTRAR EN PANTALLA: RECIBE EL #ID DE UN DIV Y EL MENSAJE
+      function log(id, msg) {
+        $(id).append("<span>" + msg + "</span><br />")
+      }
+
+      //ACCION DEL BOTON STAR
+      function onStart() {
+        if (detector && !detector.isRunning) {
+          $("#logs").html("");
+          detector.start();
+        }
+        log('#logs', "Clicked En el boton Star");
+      }
+
+      //ACCION EN EL BOTON STOP
+      function onStop() {
+        log('#logs', "Clicked En el boton Stop");
+        log('#logs', "BASE DE DATOS: NEUTRAL " + neutralCont + " " + " INTENSIDAD:" + " " + neutralInt);
+        log('#logs', "BASE DE DATOS: ENTRETENIDO " + entretenidoCont + " " + " INTENSIDAD:" +  " " + entretenidoInt);
+        log('#logs', "BASE DE DATOS: ABURRIDO " + aburridoCont + " " + " INTENSIDAD:" +  " " + aburridoInt);
+        log('#logs', "MUESTRAS EN TOTAL: " + " " + i);
+        if (detector && detector.isRunning) {
+          detector.removeEventListener();
+          detector.stop();
+        }
+      };
+
+      //ACCION EN EL BOTON RESET
+      function onReset() {
+        log('#logs', "Clicked En el boton Reset");
+        if (detector && detector.isRunning) {
+          detector.reset();
+
+          $('#results').html("");
+        }
+      };
+
+      //AGREGAMOS UNA NOTIFICACIÓN DE QUE SE HAY ACCESO PERMITIDO DE CÁMARA
+      detector.addEventListener("onWebcamConnectSuccess", function() {
+        log('#logs', "Webcam Acceso Permitido");
+      });
+
+      //AGREGAMOS UNA NOTIFICACIÓN DE QUE SE HAY ACCESO DENEGADO DE CÁMARA
+      detector.addEventListener("onWebcamConnectFailure", function() {
+        log('#logs', "Webcam APP Denegada");
+        console.log("Webcam access denegada");
+      });
+
+      //AGREGAMOS UNA NOTIFICACIÓN DE QUE EL DETECTOR SE HA DETENIDO
+      detector.addEventListener("onStopSuccess", function() {
+        log('#logs', "El detector ha sido detenido");
+        $("#results").html("");
+      });
+
+     
+      //RECIBIMOS LOS DATOS PROCESADOS DE LA IMAGEN
+      //RESULT ES EL ID DE UN DIV
+      detector.addEventListener("onImageResultsSuccess", function(faces, image, timestamp) {
+        $('#results').html("");
+        //MOSTRAMOS EL TIEMPO QUE TRANSCURRE CON TIMESTAMP
+        //TOFIXED FORMATEA LOS NUMEROS CON NOTACION DE PUNTO 
+        log('#results', "Timestamp: " + timestamp.toFixed(2));
+        log('#results', "Numero de rostros encontrados: " + faces.length);
+
+        //SI SE ENCUENTRA POR LO MENOS UN ROSTRO
+        if (faces.length > 0) {
+        //MOSTRAMOS EN PANTALLA LOS DATOS DE APARIENCIA
+        //OBTENEMOS GENERO-GLASSES-RANGO DE EDAD
+          log('#results', "Apariencia: " + JSON.stringify(faces[0].appearance));
+        //MOSTRAMOS EN PANTALLA LOS DATOS DE AEMOCIONES
+        //OBTENEMOS JOY-SADNESS-DISGUST-CONTEMP-ANGER-FEAR-SURPRISE-VALENCE-GAGEMENT
+          log('#results', "Emociones: " + JSON.stringify(faces[0].emotions, function(key, val) {            
+            return val.toFixed ? Number(val.toFixed(0)) : val;
+          }));
+        //ALMACENAMOS LAS EMOCIONES EN UNA SOLA VARIABLE QUE SERÁ PROCESADA PARA PROMEDIOS
+          var emotions = JSON.stringify(faces[0].emotions, function (key, val) {
+                return val.toFixed ? Number(val.toFixed(0)) : val;
+            })
+        //MOSTRAMOS EN PANTALLA LOS DATOS DE EXPRESIONES
+        //ENTRE ESOS DATOS SE OBTIENE LA SONRISA-BOCA ABIERTA-FRENTE-ATENCION ETC
+          log('#results', "Expresiones " + JSON.stringify(faces[0].expressions, function(key, val) {
+            return val.toFixed ? Number(val.toFixed(0)) : val;
+          }));
+          
+        //MOSTRAMOS EN PANTALLA LOS EMOJIS QUE REPRESENTAN NUESTRAS EMOCIONES
+          log('#results', "Emoji: " + faces[0].emojis.dominantEmoji);
+          //
+          vectorSuma[i]=faces[0].emotions;
+          i=i+1;
+          
+          //DIBUJAMOS LOS PUNTOS SOBRE LA IMAGEN QUE SE TOMA DE LA CAMARA
+          drawFeaturePoints(image, faces[0].featurePoints);
+          
+          //DEBEMOS RECIBIR LAS EMOCIONES Y GUARDARLAS EN UNA VARIABLE QUE LUEGO SERÁ PARAMETRO
+          //DE UNA FUNCIÓN
+          var objEmociones = JSON.parse(emotions);//CONVIERTE LA CADENA EN UN OBJETO JAVASCRIPT
+          CalcularPromedio(objEmociones);//LLAMAMOS A LA FUNCION
+        }
+      });
+
+      //DIBUJA LOS PUNTOS CARACTERÍSTICOS FACIALES DETECTADOS EN LA IMAGEN
+      function drawFeaturePoints(img, featurePoints) {
+        var contxt = $('#face_video_canvas')[0].getContext('2d');
+        var hRatio = contxt.canvas.width / img.width;
+        var vRatio = contxt.canvas.height / img.height;
+        var ratio = Math.min(hRatio, vRatio);
+
+        contxt.strokeStyle = "#FFFFFF";//COLOR DE LOS PUNTOS
+        for (var id in featurePoints) {
+          contxt.beginPath();
+          contxt.arc(featurePoints[id].x,
+            featurePoints[id].y, 2, 0, 2 * Math.PI);
+          contxt.stroke();
+
+        }
+      }
+
+       function CalcularPromedio(objEmociones){
+        //CADA UNA DE LAS EMOCIONES SE ALMACENA EN UNA VARIABLE
+        var joy = objEmociones.joy;//ALEGRIA
+        var sadness = objEmociones.sadness;//TRISTEZA
+        var disgust = objEmociones.disgust;//ASCO
+        var contempt = objEmociones.contempt;//DESPRECIO
+        var anger = objEmociones.anger;//ENFADO
+        var fear = objEmociones.fear;//MIEDO
+        var surprise = objEmociones.surprise;//SORPRESA
+        var emotion;
+
+        //PROMEDIO BASE PARA DECIDIR LA EMOCION EN CADA INSTANTE
+        var sumaEmociones = (joy + sadness + disgust + contempt + anger + fear + surprise)
+        var felicidad = joy - sadness - disgust - anger - contempt 
+        var promedio1 = (sumaEmociones - surprise) / 6
+        var promedio2 = (sumaEmociones - fear) / 6
+        var promedio3 = (sumaEmociones - disgust) / 6
+        var promedio4 = (sumaEmociones - sadness) / 6
+        var promedio5 = (sumaEmociones - anger) / 6
+        var promedio6 = (sumaEmociones - contempt) / 6       
+
+        var emocionTotal=0;
+
+        //ALGORITMO
+        if (sumaEmociones < 8) {
+            emotion = "neutral";
+            neutralCont=neutralCont+1;
+            neutralInt=neutralInt+sumaEmociones;
+            //neutral = neutral + 1;
+        }
+
+        else if ((felicidad > 0) || (surprise > promedio1) || (fear > promedio2)) {
+            emotion = "entretenido";
+            //entretenido = entretenido + 5;
+            entretenidoCont=entretenidoCont+1;
+            entretenidoInt=entretenidoInt+(felicidad+surprise+fear);
+
+        }
+
+        else if ((disgust > promedio3) || (sadness > promedio4) || (anger > promedio5) || (contempt > promedio6)) {
+            emotion = "aburrido"
+            //aburrido = aburrido + 5;
+            aburridoCont=aburridoCont+1;
+            aburridoInt=aburridoInt+(disgust+sadness+anger+contempt);
+        }
+        
+        log('#results', "Humor: " + emotion);
+        //Se envia la emocion por ajax a un archivo en php el cual realiza un INSERT en la base de datos
+        //return emocionTotal=emocionTotal+1;
+        }
+
+      </script>
+      <script src="https://download.affectiva.com/js/3.2/affdex.js"/>
+
+</html>
